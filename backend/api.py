@@ -1,12 +1,11 @@
 import os
 from datetime import datetime, timedelta, timezone
-from functools import wraps
+from math import isfinite
 
 from jose import JWTError, jwt
 from litestar import Litestar, Request, get, post
 from litestar.exceptions import HTTPException
-from litestar.response import Response
-from litestar.status_codes import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
+from litestar.status_codes import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 from passlib.context import CryptContext
 
 from db import SCHEMA, connect
@@ -65,7 +64,7 @@ def user_from(request: Request):
     sub = payload.get("sub")
     if sub not in USERS:
         return None
-    return {"username": sub, "role": payload.get("role")}
+    return {"username": sub, "role": USERS[sub]["role"]}
 
 
 def need_login(request: Request):
@@ -114,6 +113,21 @@ async def list_logs(request: Request) -> list:
         return [dump(r) for r in rows]
 
 
+@get("/api/logs/{scan_id:int}")
+async def get_log(request: Request, scan_id: int) -> dict:
+    need_login(request)
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT id, string_code, voc_v, isc_a, fill_factor, status, verdict, reason,
+                      created_by, created_at, processed_at
+               FROM iv_scans WHERE id = %s""",
+            (scan_id,),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail="扫描记录不存在")
+    return dump(row)
+
+
 @post("/api/logs", status_code=201)
 async def create_log(request: Request) -> dict:
     user = need_writer(request)
@@ -127,6 +141,8 @@ async def create_log(request: Request) -> dict:
         ff = float(data.get("fill_factor"))
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="电压电流与填充因子必须是数字")
+    if not all(isfinite(value) for value in (voc, isc, ff)):
+        raise HTTPException(status_code=400, detail="电压电流与填充因子必须是有限数字")
     now = datetime.now(timezone.utc)
     with connect() as conn:
         row = conn.execute(
@@ -141,4 +157,4 @@ async def create_log(request: Request) -> dict:
         return dump(row)
 
 
-app = Litestar(route_handlers=[health, login, list_logs, create_log])
+app = Litestar(route_handlers=[health, login, list_logs, get_log, create_log])

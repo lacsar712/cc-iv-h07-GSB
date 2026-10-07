@@ -23,6 +23,33 @@ CREATE TABLE IF NOT EXISTS iv_scans (
     created_at timestamptz NOT NULL,
     processed_at timestamptz
 );
+
+/* 修复历史上可能留下的“半开半关”记录：pending 不得带结论，done 缺结论则重新排队。 */
+UPDATE iv_scans
+SET verdict = NULL, reason = NULL, processed_at = NULL
+WHERE status = 'pending';
+
+UPDATE iv_scans
+SET status = 'pending', verdict = NULL, reason = NULL, processed_at = NULL
+WHERE status = 'done'
+  AND (verdict IS NULL OR reason IS NULL OR processed_at IS NULL);
+
+ALTER TABLE iv_scans DROP CONSTRAINT IF EXISTS iv_scans_state_ck;
+ALTER TABLE iv_scans ADD CONSTRAINT iv_scans_state_ck CHECK (
+  (
+    status = 'pending'
+    AND verdict IS NULL
+    AND reason IS NULL
+    AND processed_at IS NULL
+  )
+  OR (
+    status = 'done'
+    AND verdict IN ('合格', '衰减')
+    AND reason IS NOT NULL
+    AND processed_at IS NOT NULL
+  )
+);
+
 CREATE OR REPLACE FUNCTION notify_iv_scan() RETURNS trigger AS $$
 BEGIN
   PERFORM pg_notify('iv_scan_new', NEW.id::text);
