@@ -27,7 +27,7 @@
       <section>
         <table>
           <thead>
-            <tr><th>编号</th><th>组串</th><th>Voc</th><th>Isc</th><th>FF</th><th>状态</th><th>结论</th></tr>
+            <tr><th>编号</th><th>组串</th><th>Voc</th><th>Isc</th><th>FF</th><th>状态</th><th>结论</th><th>判定理由</th></tr>
           </thead>
           <tbody>
             <tr v-for="row in logs" :key="row.id">
@@ -38,6 +38,7 @@
               <td>{{ row.fill_factor }}</td>
               <td><span class="tag" :class="row.status === 'pending' ? 'pending' : 'ok'">{{ row.status === 'pending' ? '待处理' : '已完成' }}</span></td>
               <td><span v-if="row.verdict" class="tag" :class="row.verdict === '合格' ? 'ok' : 'bad'">{{ row.verdict }}</span><span v-else>—</span></td>
+              <td>{{ row.reason || "—" }}</td>
             </tr>
           </tbody>
         </table>
